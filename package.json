@@ -1,0 +1,30 @@
+{
+  "name": "experiment",
+  "version": "0.1.0",
+  "private": true,
+"scripts": {
+  "serve": "vue-cli-service serve",
+  "build": "vue-cli-service build",
+  "lint": "vue-cli-service lint",
+  "lint:style": "vue-cli-service lint:style",
+  "deploy": "gh-pages -d dist"
+},
+  "dependencies": {
+    "magpie-base": "^3.6.8",
+    "papaparse": "^5.5.3"
+  },
+  "devDependencies": {
+    "@samhammer/vue-cli-plugin-stylelint": "5.x",
+    "@vue/cli-plugin-eslint": "5.x",
+    "gh-pages": "^6.3.0"
+  },
+  "engines": {
+    "node": "14.x || 16.x || 18.x || 20.x",
+    "npm": ">=7.0.0"
+  },
+  "browserslist": [
+    "> 1%",
+    "last 2 versions",
+    "not dead"
+  ]
+}
