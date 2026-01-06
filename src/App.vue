@@ -113,7 +113,7 @@
             </label>
 
             <p class="hint">
-              (If you are unsure, please choose the option that seems most important.)
+              (If you are unsure, please choose the option that seems most important).
             </p>
           </div>
         </InstructionScreen>
@@ -147,7 +147,7 @@
             </label>
 
             <p class="hint">
-              (This is just a check. There are no “right answers” in the main task.)
+              (This is just a check. It is not connected to the main task).
             </p>
           </div>
         </InstructionScreen>
@@ -160,9 +160,9 @@
             Before finishing, you can leave optional feedback in the next screen.
           </p>
           <ul>
-            <li>Anything unclear or confusing?</li>
+            <li>Was anything unclear or confusing?</li>
             <li>Any scenario that felt odd, unrealistic, or harder to understand?</li>
-            <li>Any technical issues (images not loading, layout problems, etc.)?</li>
+            <li>Any technical issues (images not loading, layout problems, etc)?</li>
             <li>Any other concerns or suggestions?</li>
           </ul>
           <p class="hint">
