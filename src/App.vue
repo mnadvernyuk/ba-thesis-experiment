@@ -1,181 +1,113 @@
 <template>
   <Experiment title="BA Thesis Experiment">
     <!-- Welcome -->
-    <InstructionScreen :title="'Welcome!'">
+    <InstructionScreen title="Welcome!">
       <div class="block">
         <p>
           Thank you for taking part in the experiment.
-          In this study you will read a series of short stories describing chains of events.
+          You will read a series of short stories describing chains of events.
           Each story ends in an outcome.
         </p>
 
-        <p><strong>For each story, you will do one task:</strong></p>
-        <ol>
-          <li>
-            Select the event that seems like the <em>best candidate</em> for saying that it caused the outcome.
-          </li>
-        </ol>
-
         <p>
-          There are no right or wrong answers — please respond with your best judgment.
+          <strong>Your task is the following:</strong>
+          For each story, please select
+          <strong>the event that seems like the best candidate for saying that it caused the outcome</strong>.
         </p>
 
+        <p>There are no right or wrong answers. Please respond with your best judgment.</p>
         <p><em>Click “Next” to begin with the first story.</em></p>
       </div>
     </InstructionScreen>
 
     <!-- Loading -->
-    <InstructionScreen v-if="loading" :title="'Loading…'">
+    <InstructionScreen v-if="loading" title="Loading…">
       <div class="block">Preparing the experiment.</div>
     </InstructionScreen>
 
-    <!-- Error screen -->
-    <InstructionScreen v-else-if="errorMessage" :title="'Error'">
+    <!-- Error -->
+    <InstructionScreen v-else-if="errorMessage" title="Error">
       <div class="block">
         <p><strong>Something went wrong:</strong></p>
         <p>{{ errorMessage }}</p>
         <p class="hint">
-          Check that the CSV is at <code>public/stimuli/vignettes.csv</code> and that images are in
-          <code>public/images/</code>.
+          Make sure the CSV is at <code>public/stimuli/vignettes.csv</code> and images are in
+          <code>public/images/</code>. Image paths in the CSV should look like <code>images/xyz.png</code>.
         </p>
       </div>
     </InstructionScreen>
 
     <!-- Trials -->
     <template v-else>
-      <template v-for="(trial, idx) in trials">
-        <!-- Story screen -->
-        <InstructionScreen :key="`story-${idx}`" :title="screenTitle(trial)">
-          <div class="block">
-            <div class="imageWrap" v-if="trial.image">
-              <img :src="trial.image" alt="Scenario illustration" class="stimImage" />
-            </div>
-
-            <p class="readCarefully">Please read the following story carefully.</p>
-
-            <p><strong>Event A:</strong> {{ trial.event_A }}</p>
-            <p><strong>Event B:</strong> {{ trial.event_B }}</p>
-            <p><strong>Event C:</strong> {{ trial.event_C }}</p>
-            <p><strong>Event D:</strong> {{ trial.event_D }}</p>
-
-            <p class="outcome">
-              <strong>Outcome:</strong> {{ trial.outcome_shown }}
-            </p>
-          </div>
-        </InstructionScreen>
-
-        <!-- Cause choice screen -->
-        <InstructionScreen :key="`cause-${idx}`" :title="'Which event best caused the outcome?'">
-          <div class="block">
-            <p>
-              From the four events below, please select the event that seems like the
-              <strong>best candidate</strong> for saying that it caused the outcome.
-            </p>
-
-            <label class="choice">
-              <input
-                type="radio"
-                :name="`cause-${idx}`"
-                value="A"
-                v-model="responses[idx].causeChoice"
-              />
-              <strong>A:</strong> {{ trial.event_A }}
-            </label>
-
-            <label class="choice">
-              <input
-                type="radio"
-                :name="`cause-${idx}`"
-                value="B"
-                v-model="responses[idx].causeChoice"
-              />
-              <strong>B:</strong> {{ trial.event_B }}
-            </label>
-
-            <label class="choice">
-              <input
-                type="radio"
-                :name="`cause-${idx}`"
-                value="C"
-                v-model="responses[idx].causeChoice"
-              />
-              <strong>C:</strong> {{ trial.event_C }}
-            </label>
-
-            <label class="choice">
-              <input
-                type="radio"
-                :name="`cause-${idx}`"
-                value="D"
-                v-model="responses[idx].causeChoice"
-              />
-              <strong>D:</strong> {{ trial.event_D }}
-            </label>
-
-            <p class="hint">
-              (If you are unsure, please choose the option that seems most important).
-            </p>
-          </div>
-        </InstructionScreen>
-
-        <!-- One attention check mid-way -->
-        <InstructionScreen
-          v-if="idx === attentionIndex"
-          :key="`attn-${idx}`"
-          :title="'Attention check'"
-        >
-          <div class="block">
-            <p>
-              To show that you are paying attention, please select <strong>Option C</strong> below.
-            </p>
-
-            <label class="choice">
-              <input type="radio" :name="'attn-check'" value="A" v-model="attentionCheck" />
-              Option A
-            </label>
-            <label class="choice">
-              <input type="radio" :name="'attn-check'" value="B" v-model="attentionCheck" />
-              Option B
-            </label>
-            <label class="choice">
-              <input type="radio" :name="'attn-check'" value="C" v-model="attentionCheck" />
-              Option C
-            </label>
-            <label class="choice">
-              <input type="radio" :name="'attn-check'" value="D" v-model="attentionCheck" />
-              Option D
-            </label>
-
-            <p class="hint">
-              (This is just a check. It is not connected to the main task).
-            </p>
-          </div>
-        </InstructionScreen>
-      </template>
-
-      <!-- NEW: explicit feedback explanation BEFORE PostTestScreen -->
-      <InstructionScreen :title="'Final feedback (optional)'">
+      <InstructionScreen
+        v-for="(trial, idx) in trials"
+        :key="`trial-${idx}-${trial.scenario_id}`"
+        :title="trial.scenario_title || 'Story'"
+      >
         <div class="block">
-          <p>
-            Before finishing, you can leave optional feedback in the next screen.
+          <div v-if="trial.image" class="imageWrap">
+            <img :src="trial.image" class="stimImage" alt="Scenario illustration" />
+          </div>
+
+          <p class="readCarefully">
+            Please read the following story carefully.
+            <span class="taskLine">
+              Then select the event that seems like the best candidate for saying that it caused the outcome.
+            </span>
           </p>
-          <ul>
-            <li>Was anything unclear or confusing?</li>
-            <li>Any scenario that felt odd, unrealistic, or harder to understand?</li>
-            <li>Any technical issues (images not loading, layout problems, etc)?</li>
-            <li>Any other concerns or suggestions?</li>
-          </ul>
-          <p class="hint">
-            This feedback helps improve the experiment. You can also leave it blank.
+
+          <!-- Events with radios (no repetition of event text elsewhere) -->
+          <label class="choice">
+            <input
+              type="radio"
+              :name="`cause-${idx}`"
+              value="A"
+              v-model="responses[idx].cause_choice"
+            />
+            <strong>Event A:</strong> {{ trial.event_A }}
+          </label>
+
+          <label class="choice">
+            <input
+              type="radio"
+              :name="`cause-${idx}`"
+              value="B"
+              v-model="responses[idx].cause_choice"
+            />
+            <strong>Event B:</strong> {{ trial.event_B }}
+          </label>
+
+          <label class="choice">
+            <input
+              type="radio"
+              :name="`cause-${idx}`"
+              value="C"
+              v-model="responses[idx].cause_choice"
+            />
+            <strong>Event C:</strong> {{ trial.event_C }}
+          </label>
+
+          <label class="choice">
+            <input
+              type="radio"
+              :name="`cause-${idx}`"
+              value="D"
+              v-model="responses[idx].cause_choice"
+            />
+            <strong>Event D:</strong> {{ trial.event_D }}
+          </label>
+
+          <p class="outcome">
+            <strong>Outcome:</strong> {{ trial.outcome_shown }}
           </p>
+
+          <p class="hint">(If you are unsure, please choose the option that seems most important.)</p>
         </div>
       </InstructionScreen>
 
-      <!-- Default magpie post-test screen (includes comment box) -->
       <PostTestScreen />
 
-      <!-- End -->
-      <InstructionScreen :title="'Thank you!'">
+      <InstructionScreen title="Thank you!">
         <div class="block">
           <p>You have completed the study.</p>
         </div>
@@ -191,27 +123,19 @@ import Papa from "papaparse";
 
 export default {
   name: "App",
+
   data() {
     return {
       loading: true,
       errorMessage: "",
       trials: [],
-      responses: [],
-      attentionCheck: "",
-      attentionIndex: 0
+      responses: []
     };
   },
+
   methods: {
-    screenTitle(trial) {
-      return trial.scenario_title || "Story";
-    },
-
-    // Use Prolific PID if available; otherwise generate stable local id
+    // stable participant id so the same participant keeps the same randomization across reloads
     getParticipantId() {
-      const url = new URL(window.location.href);
-      const prolific = url.searchParams.get("PROLIFIC_PID");
-      if (prolific) return prolific;
-
       const key = "ba_thesis_pid";
       let pid = localStorage.getItem(key);
       if (!pid) {
@@ -221,124 +145,158 @@ export default {
       return pid;
     },
 
-    // deterministic hash -> int
-    hashStringToInt(str) {
-      let h = 2166136261;
-      for (let i = 0; i < str.length; i++) {
-        h ^= str.charCodeAt(i);
-        h = Math.imul(h, 16777619);
-      }
-      return h >>> 0;
+    seedFromPid(pid) {
+      let h = 0;
+      for (let i = 0; i < pid.length; i++) h = (h * 31 + pid.charCodeAt(i)) >>> 0;
+      return h;
     },
 
-    // seeded RNG
-    mulberry32(seed) {
-      return function () {
-        let t = (seed += 0x6d2b79f5);
-        t = Math.imul(t ^ (t >>> 15), t | 1);
-        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    shuffle(arr, seed) {
+      const a = arr.slice();
+      let s = seed >>> 0;
+      const rand = () => {
+        s = (1664525 * s + 1013904223) >>> 0;
+        return s / 4294967296;
       };
-    },
-
-    shuffleInPlace(arr, rand) {
-      for (let i = arr.length - 1; i > 0; i--) {
+      for (let i = a.length - 1; i > 0; i--) {
         const j = Math.floor(rand() * (i + 1));
-        [arr[i], arr[j]] = [arr[j], arr[i]];
+        [a[i], a[j]] = [a[j], a[i]];
       }
-      return arr;
+      return a;
     },
 
-    // Create a balanced-ish distal array for ANY number of trials
-    makeDistalArray(n) {
-      const base = ["natural", "non_deliberate", "deliberate"];
-      const out = [];
-      for (let i = 0; i < n; i++) out.push(base[i % base.length]);
-      return out;
+    // Robust parsing: handles 1, "1", "is_attention_check = 1", true, etc.
+    isAttentionRow(row) {
+      const raw = row?.is_attention_check;
+      if (raw === undefined || raw === null) return false;
+      const s = String(raw).trim().toLowerCase();
+      if (s === "1" || s === "true" || s === "yes") return true;
+      const m = s.match(/\d+/); // grabs first number
+      return m ? Number(m[0]) === 1 : false;
     },
 
-    // Create a half/half valence array for ANY n (difference at most 1)
-    makeValenceArray(n) {
-      const half = Math.floor(n / 2);
-      const out = [];
-      for (let i = 0; i < n; i++) out.push(i < half ? "negative" : "positive");
-      return out;
+    normDistal(s) {
+      // Normalize to: natural | non_deliberate | deliberate
+      const t = String(s ?? "").trim().toLowerCase();
+      if (!t) return "";
+      if (t === "non-deliberate" || t === "nondeliberate" || t === "non deliberate") return "non_deliberate";
+      return t;
+    },
+
+    // maps scenario labels to scenario_id in CSV
+    scenarioIdFromLabel(label) {
+      const l = String(label ?? "").trim().toLowerCase();
+      const map = {
+        car: "car_accident",
+        memory: "memory_test",
+        theatre: "theater_interruption",
+        theater: "theater_interruption",
+        metro: "metro_escalator",
+        airport: "airport_luggage",
+        apartment: "apartment_explosion"
+      };
+      return map[l] || "";
     }
   },
 
   async mounted() {
     try {
       const res = await fetch("stimuli/vignettes.csv");
-      if (!res.ok) throw new Error(`Failed to fetch CSV: ${res.status}`);
+      if (!res.ok) throw new Error(`CSV load failed: ${res.status}`);
+      const csv = await res.text();
 
-      const csvText = await res.text();
-      const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true });
+      const parsed = Papa.parse(csv, { header: true, skipEmptyLines: true });
+      const rows = (parsed.data || []).filter(r => r && r.scenario_id);
 
-      const rows = parsed.data.filter((r) => r.scenario_id);
-      if (!rows.length) throw new Error("CSV loaded but has no rows with scenario_id.");
+      if (!rows.length) throw new Error("No valid rows in CSV (missing scenario_id).");
 
-      // unique scenario list (use ALL scenarios in CSV)
-      const scenarioIds = [];
-      const seen = new Set();
-      for (const r of rows) {
-        if (!seen.has(r.scenario_id)) {
-          seen.add(r.scenario_id);
-          scenarioIds.push(r.scenario_id);
-        }
-      }
+      // identify attention check row
+      const attentionRow = rows.find(r => this.isAttentionRow(r)) || null;
 
-      // group by scenario_id
-      const byScenario = rows.reduce((acc, row) => {
-        (acc[row.scenario_id] ||= []).push(row);
+      // real rows are everything except attention check
+      const realRows = rows.filter(r => !this.isAttentionRow(r));
+
+      // normalize distal_type on real rows
+      for (const r of realRows) r.distal_type = this.normDistal(r.distal_type);
+
+      // --- PROF: fixed set of 6 scenarios (labels) ---
+      const profScenarioLabels = ["car", "memory", "theatre", "metro", "airport", "apartment"];
+      const profScenarioIds = profScenarioLabels.map(l => this.scenarioIdFromLabel(l)).filter(Boolean);
+
+      // group real rows by scenario_id
+      const byScenario = realRows.reduce((acc, r) => {
+        (acc[r.scenario_id] ||= []).push(r);
         return acc;
       }, {});
 
+      // seed per participant
       const pid = this.getParticipantId();
-      const rand = this.mulberry32(this.hashStringToInt(pid));
+      const seed = this.seedFromPid(pid);
 
-      const n = scenarioIds.length;
+      // --- three arrays (length 6), shuffle independently, use in order ---
+      const scenarioArr = this.shuffle(profScenarioIds, seed ^ 0x111);
 
-      // build arrays and shuffle independently (per prof)
-      const scenarioArr = [...scenarioIds];
-      const distalArr = this.makeDistalArray(n);
-      const valenceArr = this.makeValenceArray(n);
+      const distalBase = ["natural", "non_deliberate", "deliberate", "natural", "non_deliberate", "deliberate"];
+      const valenceBase = ["positive", "negative", "positive", "negative", "positive", "negative"];
 
-      this.shuffleInPlace(scenarioArr, rand);
-      this.shuffleInPlace(distalArr, rand);
-      this.shuffleInPlace(valenceArr, rand);
+      const distals = this.shuffle(distalBase, seed ^ 0x222);
+      const valences = this.shuffle(valenceBase, seed ^ 0x333);
 
-      // randomize trial order entirely as well (already accomplished via scenarioArr shuffle)
-      // set attention check around the middle
-      this.attentionIndex = Math.max(0, Math.floor(n / 2) - 1);
-
-      this.trials = scenarioArr.map((sid, i) => {
+      // allocate scenario–distal–valence by index
+      const assigned = scenarioArr.map((sid, i) => {
         const candidates = byScenario[sid] || [];
-        if (!candidates.length) throw new Error(`No rows found for scenario_id="${sid}"`);
 
-        const wantedDistal = distalArr[i];
-        const chosenRow =
-          candidates.find((c) => (c.distal_type || "").trim() === wantedDistal) || candidates[0];
+        // pick the row matching the assigned distal type; fall back to first row if missing
+        const assignedDistal = distals[i];
+        const chosen =
+          candidates.find(c => this.normDistal(c.distal_type) === assignedDistal) || candidates[0] || {};
 
-        const valence = valenceArr[i];
-        const outcomeShown =
-          valence === "negative" ? chosenRow.outcome_negative : chosenRow.outcome_positive;
+        const val = valences[i];
+        const outcomeShown = val === "positive" ? chosen.outcome_positive : chosen.outcome_negative;
 
-        return { ...chosenRow, valence, outcome_shown: outcomeShown };
+        return {
+          ...chosen,
+          distal_type: this.normDistal(chosen.distal_type),
+          valence: val,
+          outcome_shown: outcomeShown
+        };
       });
 
-      this.responses = this.trials.map((t) => ({
+      // trial order is also entirely random
+      const builtReal = this.shuffle(assigned, seed ^ 0x444);
+
+      // INSERT attention check at fixed position #4 (index 3)
+      const builtAll = builtReal.slice();
+      if (attentionRow) {
+        builtAll.splice(3, 0, {
+          ...attentionRow,
+          outcome_shown: attentionRow.outcome_positive || attentionRow.outcome_negative || ""
+        });
+      } else {
+        console.warn("No attention check row found (is_attention_check=1). Running without attention check.");
+      }
+
+      this.trials = builtAll;
+
+      // responses aligned with trials
+      this.responses = this.trials.map(t => ({
         scenario_id: t.scenario_id,
-        scenario_title: t.scenario_title,
-        distal_type: t.distal_type,
-        valence: t.valence,
-        causeChoice: ""
+        is_attention_check: this.isAttentionRow(t),
+        attention_correct: t.attention_correct || "",
+        cause_choice: ""
       }));
 
-      console.log("PID:", pid);
-      console.log("ASSIGNMENTS:", this.trials.map((t) => [t.scenario_id, t.distal_type, t.valence]));
+      console.log("TRIAL ORDER:", this.trials.map(t => t.scenario_id));
+      console.log("PROF SCENARIOS USED:", profScenarioIds);
+      console.log("ASSIGNMENTS:", this.trials.map(t => ({
+        scenario_id: t.scenario_id,
+        distal_type: t.distal_type,
+        valence: t.valence,
+        is_attention_check: this.isAttentionRow(t)
+      })));
     } catch (err) {
       console.error(err);
-      this.errorMessage = String(err.message || err);
+      this.errorMessage = err?.message || String(err);
     } finally {
       this.loading = false;
     }
@@ -347,41 +305,19 @@ export default {
 </script>
 
 <style scoped>
-.block {
-  max-width: 820px;
-  margin: 0 auto;
-}
+.block { max-width: 820px; margin: 0 auto; }
 
-.imageWrap {
-  text-align: center;
-  margin-bottom: 16px;
-}
+.imageWrap { text-align: center; margin-bottom: 16px; }
 
-.stimImage {
-  max-width: 520px;
-  width: 100%;
-  height: auto;
-  border-radius: 10px;
-}
+.stimImage { max-width: 520px; width: 100%; border-radius: 10px; }
 
-.choice {
-  display: block;
-  margin: 10px 0;
-}
+.readCarefully { color: #777; margin-bottom: 12px; line-height: 1.35; }
 
-.outcome {
-  margin-top: 14px;
-}
+.taskLine { display: block; margin-top: 6px; color: #666; }
 
-.hint {
-  margin-top: 10px;
-  font-size: 0.95em;
-  color: #555;
-}
+.choice { display: block; margin: 10px 0; }
 
-.readCarefully {
-  margin: 6px 0 14px 0;
-  font-size: 0.95em;
-  color: #777;
-}
+.outcome { margin-top: 16px; }
+
+.hint { font-size: 0.95em; color: #555; }
 </style>
