@@ -118,7 +118,6 @@
         </div>
       </InstructionScreen>
 
-      <SubmitResultsScreen />
     </template>
   </Experiment>
 </template>
