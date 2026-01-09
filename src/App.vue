@@ -103,7 +103,7 @@
 
           <p class="hint">(If you are unsure, please choose the option that seems most important.)</p>
 
-          <!-- NEW: warning shown only when someone tries Next without answering -->
+          <!-- warning shown only when someone tries Next without answering -->
           <p v-if="blockedIdx === idx" class="pleaseAnswer">
             Please select an event before continuing.
           </p>
@@ -138,7 +138,9 @@ export default {
       // which trial is currently blocked (for the warning message)
       blockedIdx: null,
       // store handler ref so we can remove it if needed
-      _nextGateHandler: null
+      _nextGateHandler: null,
+      // store unwatch fn for magpie sync
+      _unwatchMagpie: null
     };
   },
 
@@ -251,6 +253,29 @@ export default {
 
       // capture phase to intercept before the framework handles it
       document.addEventListener("click", this._nextGateHandler, true);
+    },
+
+    // NEW: sync local responses into Magpie's measurements (so debug/export is not empty)
+    installMagpieSync(pid) {
+      if (!this.$magpie || !this.$magpie.measurements) {
+        console.warn("Magpie instance not found on this.$magpie. Debug export may be empty.");
+        return;
+      }
+
+      // put the important stuff into the magpie store
+      this.$magpie.measurements.pid = pid;
+      this.$magpie.measurements.trials = this.trials;
+      this.$magpie.measurements.responses = this.responses;
+
+      // keep updated as participants answer
+      if (this._unwatchMagpie) this._unwatchMagpie();
+      this._unwatchMagpie = this.$watch(
+        "responses",
+        (val) => {
+          this.$magpie.measurements.responses = val;
+        },
+        { deep: true }
+      );
     }
   },
 
@@ -317,7 +342,7 @@ export default {
         };
       });
 
-      // trial order is entirely random
+      // trial order is also entirely random
       const builtReal = this.shuffle(assigned, seed ^ 0x444);
 
       // attention check at fixed position #4 (index 3)
@@ -341,8 +366,11 @@ export default {
         cause_choice: ""
       }));
 
-      // installing the "must answer before Next" gate
+      // install the "must answer before Next" gate
       this.$nextTick(() => this.installNextGate());
+
+      // NEW: ensure Magpie debug/export sees your responses
+      this.installMagpieSync(pid);
 
       console.log("TRIAL ORDER:", this.trials.map(t => t.scenario_id));
       console.log("PROF SCENARIOS USED:", profScenarioIds);
@@ -358,6 +386,18 @@ export default {
     } finally {
       this.loading = false;
     }
+  },
+
+  beforeDestroy() {
+    // clean up watchers/listeners (Vue 2)
+    if (this._unwatchMagpie) this._unwatchMagpie();
+    if (this._nextGateHandler) document.removeEventListener("click", this._nextGateHandler, true);
+  },
+
+  unmounted() {
+    // clean up watchers/listeners (Vue 3 safe)
+    if (this._unwatchMagpie) this._unwatchMagpie();
+    if (this._nextGateHandler) document.removeEventListener("click", this._nextGateHandler, true);
   }
 };
 </script>
