@@ -5,7 +5,7 @@ export default {
   completionUrl: 'https://...',
   contactEmail: 'test@random.com',
 
-  mode: 'directLink',
+  mode: 'debug',
   language: 'en',
 
   stimuli: {
