@@ -118,6 +118,8 @@
         </div>
       </InstructionScreen>
 
+      <DebugResultsScreen />
+
     </template>
   </Experiment>
 </template>
@@ -254,7 +256,7 @@ export default {
       document.addEventListener("click", this._nextGateHandler, true);
     },
 
-    // NEW: sync local responses into Magpie's measurements (so debug/export is not empty)
+    // sync local responses into Magpie's measurements (so debug/export is not empty)
     installMagpieSync(pid) {
       if (!this.$magpie || !this.$magpie.measurements) {
         console.warn("Magpie instance not found on this.$magpie. Debug export may be empty.");
