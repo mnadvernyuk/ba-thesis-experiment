@@ -102,6 +102,11 @@
           </p>
 
           <p class="hint">(If you are unsure, please choose the option that seems most important.)</p>
+
+          <!-- NEW: warning shown only when someone tries Next without answering -->
+          <p v-if="blockedIdx === idx" class="pleaseAnswer">
+            Please select an event before continuing.
+          </p>
         </div>
       </InstructionScreen>
 
@@ -129,7 +134,11 @@ export default {
       loading: true,
       errorMessage: "",
       trials: [],
-      responses: []
+      responses: [],
+      // which trial is currently blocked (for the warning message)
+      blockedIdx: null,
+      // store handler ref so we can remove it if needed
+      _nextGateHandler: null
     };
   },
 
@@ -179,7 +188,8 @@ export default {
       // Normalize to: natural | non_deliberate | deliberate
       const t = String(s ?? "").trim().toLowerCase();
       if (!t) return "";
-      if (t === "non-deliberate" || t === "nondeliberate" || t === "non deliberate") return "non_deliberate";
+      if (t === "non-deliberate" || t === "nondeliberate" || t === "non deliberate")
+        return "non_deliberate";
       return t;
     },
 
@@ -196,6 +206,51 @@ export default {
         apartment: "apartment_explosion"
       };
       return map[l] || "";
+    },
+
+    // determining which trial screen is currently visible by finding a visible radio input
+    getVisibleTrialIdx() {
+      const inputs = Array.from(
+        document.querySelectorAll('input[type="radio"][name^="cause-"]')
+      );
+      const visible = inputs.find(el => el.offsetParent !== null);
+      if (!visible) return null;
+      const m = String(visible.name).match(/^cause-(\d+)$/);
+      return m ? Number(m[1]) : null;
+    },
+
+    // installing a guard that blocks Next unless an option is selected
+    installNextGate() {
+      if (this._nextGateHandler) return;
+
+      this._nextGateHandler = (e) => {
+        const t = e.target;
+        if (!t) return;
+
+        // Only react to clicks on the "Next" control
+        const label = (t.innerText || t.value || "").trim().toLowerCase();
+        if (label !== "next") return;
+
+        const idx = this.getVisibleTrialIdx();
+        if (idx === null) return; // not on a trial screen
+
+        const hasChoice = !!this.responses?.[idx]?.cause_choice;
+        if (hasChoice) return;
+
+        // Block navigation
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
+
+        // Show warning on the current trial
+        this.blockedIdx = idx;
+        window.setTimeout(() => {
+          if (this.blockedIdx === idx) this.blockedIdx = null;
+        }, 1200);
+      };
+
+      // capture phase to intercept before the framework handles it
+      document.addEventListener("click", this._nextGateHandler, true);
     }
   },
 
@@ -219,7 +274,7 @@ export default {
       // normalize distal_type on real rows
       for (const r of realRows) r.distal_type = this.normDistal(r.distal_type);
 
-      // --- PROF: fixed set of 6 scenarios (labels) ---
+      // --- Fixed set of 6 scenarios (labels) ---
       const profScenarioLabels = ["car", "memory", "theatre", "metro", "airport", "apartment"];
       const profScenarioIds = profScenarioLabels.map(l => this.scenarioIdFromLabel(l)).filter(Boolean);
 
@@ -262,10 +317,10 @@ export default {
         };
       });
 
-      // trial order is also entirely random
+      // trial order is entirely random
       const builtReal = this.shuffle(assigned, seed ^ 0x444);
 
-      // INSERT attention check at fixed position #4 (index 3)
+      // attention check at fixed position #4 (index 3)
       const builtAll = builtReal.slice();
       if (attentionRow) {
         builtAll.splice(3, 0, {
@@ -285,6 +340,9 @@ export default {
         attention_correct: t.attention_correct || "",
         cause_choice: ""
       }));
+
+      // installing the "must answer before Next" gate
+      this.$nextTick(() => this.installNextGate());
 
       console.log("TRIAL ORDER:", this.trials.map(t => t.scenario_id));
       console.log("PROF SCENARIOS USED:", profScenarioIds);
@@ -320,4 +378,6 @@ export default {
 .outcome { margin-top: 16px; }
 
 .hint { font-size: 0.95em; color: #555; }
+
+.pleaseAnswer { margin-top: 8px; color: #b00020; font-size: 0.95em; }
 </style>
