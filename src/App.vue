@@ -56,13 +56,14 @@
             </span>
           </p>
 
-          <!-- Events with radios (no repetition of event text elsewhere) -->
+          <!-- Events with radios -->
           <label class="choice">
             <input
               type="radio"
               :name="`cause-${idx}`"
               value="A"
               v-model="responses[idx].cause_choice"
+              @change="blockedIdx = null"
             />
             <strong>Event A:</strong> {{ trial.event_A }}
           </label>
@@ -73,6 +74,7 @@
               :name="`cause-${idx}`"
               value="B"
               v-model="responses[idx].cause_choice"
+              @change="blockedIdx = null"
             />
             <strong>Event B:</strong> {{ trial.event_B }}
           </label>
@@ -83,6 +85,7 @@
               :name="`cause-${idx}`"
               value="C"
               v-model="responses[idx].cause_choice"
+              @change="blockedIdx = null"
             />
             <strong>Event C:</strong> {{ trial.event_C }}
           </label>
@@ -93,6 +96,7 @@
               :name="`cause-${idx}`"
               value="D"
               v-model="responses[idx].cause_choice"
+              @change="blockedIdx = null"
             />
             <strong>Event D:</strong> {{ trial.event_D }}
           </label>
@@ -112,25 +116,14 @@
 
       <PostTestScreen />
 
-      <!-- show responses so participants can copy/paste -->
-      <InstructionScreen title="Finished — please copy your responses">
+      <InstructionScreen title="Thank you!">
         <div class="block">
-          <p>
-            <strong>Thank you!</strong> Please copy the text below and send it to Marichka.
-          </p>
-
-          <p class="hint">
-            Click inside the box, press <strong>Ctrl+A</strong> (or ⌘A), then <strong>Ctrl+C</strong> (or ⌘C).
-          </p>
-
-          <textarea class="copyBox" readonly :value="finalCsvText"></textarea>
-
-          <details style="margin-top: 12px;">
-            <summary style="cursor: pointer;">Show JSON version (optional)</summary>
-            <textarea class="copyBox" readonly :value="finalJsonText"></textarea>
-          </details>
+          <p>You have completed the study.</p>
         </div>
       </InstructionScreen>
+
+      <!-- IMPORTANT for server submission -->
+      <SubmitResultsScreen />
     </template>
   </Experiment>
 </template>
@@ -147,26 +140,10 @@ export default {
       errorMessage: "",
       trials: [],
       responses: [],
-      // which trial is currently blocked (for the warning message)
       blockedIdx: null,
-      // store handler ref so we can remove it if needed
       _nextGateHandler: null,
-      // store unwatch fn for magpie sync
-      _unwatchMagpie: null,
-      // copyable outputs for the final screen
-      finalCsvText: "",
-      finalJsonText: ""
+      _unwatchMagpie: null
     };
-  },
-
-  watch: {
-    // Keep the final copy text up-to-date as participants answer
-    responses: {
-      deep: true,
-      handler() {
-        this.buildFinalCopyText();
-      }
-    }
   },
 
   methods: {
@@ -207,12 +184,11 @@ export default {
       if (raw === undefined || raw === null) return false;
       const s = String(raw).trim().toLowerCase();
       if (s === "1" || s === "true" || s === "yes") return true;
-      const m = s.match(/\d+/); // grabs first number
+      const m = s.match(/\d+/);
       return m ? Number(m[0]) === 1 : false;
     },
 
     normDistal(s) {
-      // Normalize to: natural | non_deliberate | deliberate
       const t = String(s ?? "").trim().toLowerCase();
       if (!t) return "";
       if (t === "non-deliberate" || t === "nondeliberate" || t === "non deliberate")
@@ -220,7 +196,6 @@ export default {
       return t;
     },
 
-    // maps scenario labels to scenario_id in CSV
     scenarioIdFromLabel(label) {
       const l = String(label ?? "").trim().toLowerCase();
       const map = {
@@ -235,7 +210,6 @@ export default {
       return map[l] || "";
     },
 
-    // determining which trial screen is currently visible by finding a visible radio input
     getVisibleTrialIdx() {
       const inputs = Array.from(
         document.querySelectorAll('input[type="radio"][name^="cause-"]')
@@ -254,9 +228,9 @@ export default {
         const t = e.target;
         if (!t) return;
 
-        // Only react to clicks on the "Next" control
-        const label = (t.innerText || t.value || "").trim().toLowerCase();
-        if (label !== "next") return;
+        // Most reliable: handle clicks on buttons/links inside magpie navigation
+        const text = (t.innerText || t.value || "").trim().toLowerCase();
+        if (text !== "next") return;
 
         const idx = this.getVisibleTrialIdx();
         if (idx === null) return; // not on a trial screen
@@ -276,81 +250,48 @@ export default {
         }, 1200);
       };
 
-      // capture phase to intercept before the framework handles it
       document.addEventListener("click", this._nextGateHandler, true);
     },
 
-    // sync local responses into Magpie's measurements (kept, but final screen is now the real "export")
-    installMagpieSync(pid) {
+    installMagpieMeasurements(pid) {
       if (!this.$magpie || !this.$magpie.measurements) {
-        console.warn("Magpie instance not found on this.$magpie.");
+        console.warn("Magpie instance not found on this.$magpie. Submission may fail.");
         return;
       }
 
+      // participant-level metadata
       this.$magpie.measurements.pid = pid;
-      this.$magpie.measurements.trials = this.trials;
-      this.$magpie.measurements.responses = this.responses;
+      this.$magpie.measurements.experiment_version = "ba_thesis_v1";
+      this.$magpie.measurements.created_at = new Date().toISOString();
+
+      const buildRows = () => {
+        return (this.trials || []).map((t, i) => {
+          const r = (this.responses || [])[i] || {};
+          return {
+            pid,
+            trial_index: i,
+            scenario_id: t?.scenario_id || "",
+            scenario_title: t?.scenario_title || "",
+            distal_type: t?.distal_type || "",
+            valence: t?.valence || "",
+            outcome_shown: t?.outcome_shown || "",
+            is_attention_check: this.isAttentionRow(t) ? 1 : 0,
+            attention_correct: r?.attention_correct || "",
+            cause_choice: r?.cause_choice || ""
+          };
+        });
+      };
+
+      this.$magpie.measurements.trial_rows = buildRows();
 
       if (this._unwatchMagpie) this._unwatchMagpie();
       this._unwatchMagpie = this.$watch(
         "responses",
-        (val) => {
-          this.$magpie.measurements.responses = val;
+        () => {
+          this.$magpie.measurements.trial_rows = buildRows();
         },
         { deep: true }
       );
-    },
-
-    // Build copyable CSV + JSON for the final screen
-    buildFinalCopyText() {
-      const pid =
-        (this.$magpie && this.$magpie.measurements && this.$magpie.measurements.pid) || "";
-
-      const rows = (this.trials || []).map((t, i) => {
-        const r = (this.responses || [])[i] || {};
-        return {
-          pid,
-          trial_index: i,
-          scenario_id: t?.scenario_id || "",
-          scenario_title: t?.scenario_title || "",
-          distal_type: t?.distal_type || "",
-          valence: t?.valence || "",
-          outcome_shown: t?.outcome_shown || "",
-          is_attention_check: this.isAttentionRow(t) ? 1 : 0,
-          attention_correct: r?.attention_correct || "",
-          cause_choice: r?.cause_choice || ""
-        };
-      });
-
-      this.finalJsonText = JSON.stringify(rows, null, 2);
-
-      const headers = Object.keys(
-        rows[0] || {
-          pid: "",
-          trial_index: "",
-          scenario_id: "",
-          scenario_title: "",
-          distal_type: "",
-          valence: "",
-          outcome_shown: "",
-          is_attention_check: "",
-          attention_correct: "",
-          cause_choice: ""
-        }
-      );
-
-      const escapeCsv = (v) => {
-        const s = String(v ?? "");
-        if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-        return s;
-      };
-
-      const lines = [
-        headers.join(","),
-        ...rows.map((row) => headers.map((h) => escapeCsv(row[h])).join(","))
-      ];
-
-      this.finalCsvText = lines.join("\n");
     }
   },
 
@@ -361,24 +302,22 @@ export default {
       const csv = await res.text();
 
       const parsed = Papa.parse(csv, { header: true, skipEmptyLines: true });
-      const rows = (parsed.data || []).filter((r) => r && r.scenario_id);
+      const rows = (parsed.data || []).filter(r => r && r.scenario_id);
 
       if (!rows.length) throw new Error("No valid rows in CSV (missing scenario_id).");
 
       // identify attention check row
-      const attentionRow = rows.find((r) => this.isAttentionRow(r)) || null;
+      const attentionRow = rows.find(r => this.isAttentionRow(r)) || null;
 
       // real rows are everything except attention check
-      const realRows = rows.filter((r) => !this.isAttentionRow(r));
+      const realRows = rows.filter(r => !this.isAttentionRow(r));
 
       // normalize distal_type on real rows
       for (const r of realRows) r.distal_type = this.normDistal(r.distal_type);
 
       // --- Fixed set of 6 scenarios (labels) ---
       const profScenarioLabels = ["car", "memory", "theatre", "metro", "airport", "apartment"];
-      const profScenarioIds = profScenarioLabels
-        .map((l) => this.scenarioIdFromLabel(l))
-        .filter(Boolean);
+      const profScenarioIds = profScenarioLabels.map(l => this.scenarioIdFromLabel(l)).filter(Boolean);
 
       // group real rows by scenario_id
       const byScenario = realRows.reduce((acc, r) => {
@@ -393,14 +332,7 @@ export default {
       // --- three arrays (length 6), shuffle independently, use in order ---
       const scenarioArr = this.shuffle(profScenarioIds, seed ^ 0x111);
 
-      const distalBase = [
-        "natural",
-        "non_deliberate",
-        "deliberate",
-        "natural",
-        "non_deliberate",
-        "deliberate"
-      ];
+      const distalBase = ["natural", "non_deliberate", "deliberate", "natural", "non_deliberate", "deliberate"];
       const valenceBase = ["positive", "negative", "positive", "negative", "positive", "negative"];
 
       const distals = this.shuffle(distalBase, seed ^ 0x222);
@@ -412,9 +344,7 @@ export default {
 
         const assignedDistal = distals[i];
         const chosen =
-          candidates.find((c) => this.normDistal(c.distal_type) === assignedDistal) ||
-          candidates[0] ||
-          {};
+          candidates.find(c => this.normDistal(c.distal_type) === assignedDistal) || candidates[0] || {};
 
         const val = valences[i];
         const outcomeShown = val === "positive" ? chosen.outcome_positive : chosen.outcome_negative;
@@ -444,24 +374,17 @@ export default {
       this.trials = builtAll;
 
       // responses aligned with trials
-      this.responses = this.trials.map((t) => ({
+      this.responses = this.trials.map(t => ({
         scenario_id: t.scenario_id,
         is_attention_check: this.isAttentionRow(t),
         attention_correct: t.attention_correct || "",
         cause_choice: ""
       }));
 
-      // install the "must answer before Next" gate
       this.$nextTick(() => this.installNextGate());
 
-      // optional magpie sync (doesn't hurt)
-      this.installMagpieSync(pid);
-
-      // build initial final copy text (will update via watcher)
-      this.buildFinalCopyText();
-
-      console.log("TRIAL ORDER:", this.trials.map((t) => t.scenario_id));
-      console.log("PROF SCENARIOS USED:", profScenarioIds);
+      // IMPORTANT: enable real submission by populating magpie measurements
+      this.installMagpieMeasurements(pid);
     } catch (err) {
       console.error(err);
       this.errorMessage = err?.message || String(err);
@@ -471,13 +394,11 @@ export default {
   },
 
   beforeDestroy() {
-    // clean up watchers/listeners (Vue 2)
     if (this._unwatchMagpie) this._unwatchMagpie();
     if (this._nextGateHandler) document.removeEventListener("click", this._nextGateHandler, true);
   },
 
   unmounted() {
-    // clean up watchers/listeners (Vue 3 safe)
     if (this._unwatchMagpie) this._unwatchMagpie();
     if (this._nextGateHandler) document.removeEventListener("click", this._nextGateHandler, true);
   }
@@ -502,16 +423,4 @@ export default {
 .hint { font-size: 0.95em; color: #555; }
 
 .pleaseAnswer { margin-top: 8px; color: #b00020; font-size: 0.95em; }
-
-/* Final screen copy box */
-.copyBox {
-  width: 100%;
-  min-height: 220px;
-  margin-top: 10px;
-  padding: 10px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
-    "Courier New", monospace;
-  font-size: 12px;
-  line-height: 1.35;
-}
 </style>
