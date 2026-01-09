@@ -1,6 +1,5 @@
 <template>
   <Experiment title="BA Thesis Experiment">
-    <!-- Welcome -->
     <InstructionScreen title="Welcome!">
       <div class="block">
         <p>
@@ -20,12 +19,10 @@
       </div>
     </InstructionScreen>
 
-    <!-- Loading -->
     <InstructionScreen v-if="loading" title="Loading…">
       <div class="block">Preparing the experiment.</div>
     </InstructionScreen>
 
-    <!-- Error -->
     <InstructionScreen v-else-if="errorMessage" title="Error">
       <div class="block">
         <p><strong>Something went wrong:</strong></p>
@@ -37,7 +34,6 @@
       </div>
     </InstructionScreen>
 
-    <!-- Trials -->
     <template v-else>
       <InstructionScreen
         v-for="(trial, idx) in trials"
@@ -112,7 +108,53 @@
         </div>
       </InstructionScreen>
 
-      <PostTestScreen />
+      <!-- Custom post-test screen that DOES NOT create a new trial row -->
+      <Screen title="Final questions (optional)">
+        <div class="block">
+          <p>
+            Answering the following questions is optional, but your answers will help us analyze our results.
+          </p>
+
+          <div class="formRow">
+            <label>Age</label>
+            <input type="number" min="0" v-model.number="$magpie.measurements.age" />
+          </div>
+
+          <div class="formRow">
+            <label>Gender</label>
+            <select v-model="$magpie.measurements.gender">
+              <option value="">(prefer not to say)</option>
+              <option value="male">male</option>
+              <option value="female">female</option>
+              <option value="other">other</option>
+            </select>
+          </div>
+
+          <div class="formRow">
+            <label>Education</label>
+            <select v-model="$magpie.measurements.education">
+              <option value="">(prefer not to say)</option>
+              <option value="below highschool">below highschool</option>
+              <option value="highschool">highschool</option>
+              <option value="college">college</option>
+              <option value="higher">higher</option>
+            </select>
+          </div>
+
+          <div class="formRow">
+            <label>Native languages</label>
+            <input type="text" v-model="$magpie.measurements.languages" placeholder="e.g., German, Ukrainian" />
+          </div>
+
+          <div class="formRow">
+            <label>Comments</label>
+            <textarea rows="3" v-model="$magpie.measurements.comments"></textarea>
+          </div>
+
+          <!-- IMPORTANT: nextScreen() (not saveAndNextScreen) so it doesn't create a mismatched results row -->
+          <button @click="$magpie.nextScreen()">Next</button>
+        </div>
+      </Screen>
 
       <InstructionScreen title="Thank you!">
         <div class="block">
@@ -139,8 +181,8 @@ export default {
       responses: [],
       blockedIdx: null,
       _nextGateHandler: null,
-      _unwatchMagpie: null,
-      _pid: ""
+      pid: "",
+      recorded: []
     };
   },
 
@@ -187,7 +229,8 @@ export default {
     normDistal(s) {
       const t = String(s ?? "").trim().toLowerCase();
       if (!t) return "";
-      if (t === "non-deliberate" || t === "nondeliberate" || t === "non deliberate") return "non_deliberate";
+      if (t === "non-deliberate" || t === "nondeliberate" || t === "non deliberate")
+        return "non_deliberate";
       return t;
     },
 
@@ -213,6 +256,30 @@ export default {
       return m ? Number(m[1]) : null;
     },
 
+    ensureMagpieBasics() {
+      if (!this.$magpie || !this.$magpie.measurements) return;
+      this.$magpie.measurements.pid = this.pid;
+      this.$magpie.measurements.experiment_version = "ba_thesis_v1";
+      this.$magpie.measurements.created_at = new Date().toISOString();
+    },
+
+    trialRow(idx) {
+      const t = this.trials[idx] || {};
+      const r = this.responses[idx] || {};
+      return {
+        pid: this.pid,
+        trial_index: idx,
+        scenario_id: t.scenario_id || "",
+        scenario_title: t.scenario_title || "",
+        distal_type: t.distal_type || "",
+        valence: t.valence || "",
+        outcome_shown: t.outcome_shown || "",
+        is_attention_check: this.isAttentionRow(t) ? 1 : 0,
+        attention_correct: r.attention_correct || "",
+        cause_choice: r.cause_choice || ""
+      };
+    },
+
     installNextGate() {
       if (this._nextGateHandler) return;
 
@@ -224,63 +291,37 @@ export default {
         if (text !== "next") return;
 
         const idx = this.getVisibleTrialIdx();
-        if (idx === null) return;
+        if (idx === null) return; // not on a vignette trial
 
         const hasChoice = !!this.responses?.[idx]?.cause_choice;
-        if (hasChoice) return;
+        if (!hasChoice) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
+          this.blockedIdx = idx;
+          window.setTimeout(() => {
+            if (this.blockedIdx === idx) this.blockedIdx = null;
+          }, 1200);
+          return;
+        }
 
-        e.preventDefault();
-        e.stopPropagation();
-        if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
-
-        this.blockedIdx = idx;
-        window.setTimeout(() => {
-          if (this.blockedIdx === idx) this.blockedIdx = null;
-        }, 1200);
+        // Record exactly one row per trial (server requires array of objects with same keys)
+        if (this.$magpie && typeof this.$magpie.addTrialData === "function") {
+          if (!this.recorded[idx]) {
+            this.$magpie.addTrialData(this.trialRow(idx));
+            this.$set(this.recorded, idx, true);
+          }
+        }
       };
 
       document.addEventListener("click", this._nextGateHandler, true);
-    },
-
-    buildTrialRows() {
-      const pid = this._pid || "";
-      return (this.trials || []).map((t, i) => {
-        const r = (this.responses || [])[i] || {};
-        return {
-          pid,
-          trial_index: i,
-          scenario_id: t?.scenario_id || "",
-          scenario_title: t?.scenario_title || "",
-          distal_type: t?.distal_type || "",
-          valence: t?.valence || "",
-          outcome_shown: t?.outcome_shown || "",
-          is_attention_check: this.isAttentionRow(t) ? 1 : 0,
-          attention_correct: r?.attention_correct || "",
-          cause_choice: r?.cause_choice || ""
-        };
-      });
-    },
-
-    installMagpieMeasurementsAsArray() {
-      if (!this.$magpie) {
-        console.warn("Magpie instance not found on this.$magpie.");
-        return;
-      }
-
-      const write = () => {
-        const rows = this.buildTrialRows();
-        this.$magpie.measurements = rows; // <-- CRUCIAL: array goes here
-      };
-
-      write();
-
-      if (this._unwatchMagpie) this._unwatchMagpie();
-      this._unwatchMagpie = this.$watch("responses", write, { deep: true });
     }
   },
 
   async mounted() {
     try {
+      this.pid = this.getParticipantId();
+
       const res = await fetch("stimuli/vignettes.csv");
       if (!res.ok) throw new Error(`CSV load failed: ${res.status}`);
       const csv = await res.text();
@@ -292,7 +333,6 @@ export default {
 
       const attentionRow = rows.find(r => this.isAttentionRow(r)) || null;
       const realRows = rows.filter(r => !this.isAttentionRow(r));
-
       for (const r of realRows) r.distal_type = this.normDistal(r.distal_type);
 
       const profScenarioLabels = ["car", "memory", "theatre", "metro", "airport", "apartment"];
@@ -303,25 +343,19 @@ export default {
         return acc;
       }, {});
 
-      const pid = this.getParticipantId();
-      this._pid = pid;
-      const seed = this.seedFromPid(pid);
+      const seed = this.seedFromPid(this.pid);
 
       const scenarioArr = this.shuffle(profScenarioIds, seed ^ 0x111);
-
       const distalBase = ["natural", "non_deliberate", "deliberate", "natural", "non_deliberate", "deliberate"];
       const valenceBase = ["positive", "negative", "positive", "negative", "positive", "negative"];
-
       const distals = this.shuffle(distalBase, seed ^ 0x222);
       const valences = this.shuffle(valenceBase, seed ^ 0x333);
 
       const assigned = scenarioArr.map((sid, i) => {
         const candidates = byScenario[sid] || [];
         const assignedDistal = distals[i];
-
         const chosen =
           candidates.find(c => this.normDistal(c.distal_type) === assignedDistal) || candidates[0] || {};
-
         const val = valences[i];
         const outcomeShown = val === "positive" ? chosen.outcome_positive : chosen.outcome_negative;
 
@@ -352,8 +386,12 @@ export default {
         cause_choice: ""
       }));
 
-      this.$nextTick(() => this.installNextGate());
-      this.installMagpieMeasurementsAsArray();
+      this.recorded = this.trials.map(() => false);
+
+      this.$nextTick(() => {
+        this.ensureMagpieBasics();
+        this.installNextGate();
+      });
     } catch (err) {
       console.error(err);
       this.errorMessage = err?.message || String(err);
@@ -363,19 +401,21 @@ export default {
   },
 
   beforeDestroy() {
-    if (this._unwatchMagpie) this._unwatchMagpie();
     if (this._nextGateHandler) document.removeEventListener("click", this._nextGateHandler, true);
   },
 
   unmounted() {
-    if (this._unwatchMagpie) this._unwatchMagpie();
     if (this._nextGateHandler) document.removeEventListener("click", this._nextGateHandler, true);
   }
 };
 </script>
 
 <style scoped>
-.block { max-width: 820px; margin: 0 auto; }
+.block {
+  max-width: 820px;
+  margin: 0 auto;
+  text-align: left;
+}
 
 .imageWrap { text-align: center; margin-bottom: 16px; }
 
@@ -392,4 +432,8 @@ export default {
 .hint { font-size: 0.95em; color: #555; }
 
 .pleaseAnswer { margin-top: 8px; color: #b00020; font-size: 0.95em; }
+
+.formRow { margin: 10px 0; }
+.formRow label { display: block; font-weight: 600; margin-bottom: 4px; }
+.formRow input, .formRow select, .formRow textarea { width: 100%; max-width: 520px; }
 </style>
