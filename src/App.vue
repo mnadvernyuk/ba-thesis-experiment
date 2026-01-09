@@ -39,93 +39,98 @@
 
     <!-- Trials -->
     <template v-else>
-      <!-- IMPORTANT: use Screen/Slide so our Next button can call saveAndNextScreen() -->
-      <Screen
+      <InstructionScreen
         v-for="(trial, idx) in trials"
         :key="`trial-${idx}-${trial.scenario_id}`"
+        :title="trial.scenario_title || 'Story'"
       >
-        <Slide>
-          <div class="block">
-            <h2 style="margin-top: 0;">{{ trial.scenario_title || "Story" }}</h2>
-
-            <div v-if="trial.image" class="imageWrap">
-              <img :src="trial.image" class="stimImage" alt="Scenario illustration" />
-            </div>
-
-            <p class="readCarefully">
-              Please read the following story carefully.
-              <span class="taskLine">
-                Then select the event that seems like the best candidate for saying that it caused the outcome.
-              </span>
-            </p>
-
-            <label class="choice">
-              <input
-                type="radio"
-                :name="`cause-${idx}`"
-                value="A"
-                v-model="responses[idx].cause_choice"
-              />
-              <strong>Event A:</strong> {{ trial.event_A }}
-            </label>
-
-            <label class="choice">
-              <input
-                type="radio"
-                :name="`cause-${idx}`"
-                value="B"
-                v-model="responses[idx].cause_choice"
-              />
-              <strong>Event B:</strong> {{ trial.event_B }}
-            </label>
-
-            <label class="choice">
-              <input
-                type="radio"
-                :name="`cause-${idx}`"
-                value="C"
-                v-model="responses[idx].cause_choice"
-              />
-              <strong>Event C:</strong> {{ trial.event_C }}
-            </label>
-
-            <label class="choice">
-              <input
-                type="radio"
-                :name="`cause-${idx}`"
-                value="D"
-                v-model="responses[idx].cause_choice"
-              />
-              <strong>Event D:</strong> {{ trial.event_D }}
-            </label>
-
-            <p class="outcome">
-              <strong>Outcome:</strong> {{ trial.outcome_shown }}
-            </p>
-
-            <p class="hint">(If you are unsure, please choose the option that seems most important.)</p>
-
-            <!-- Next button: disabled until a choice is made -->
-            <button
-              :disabled="!responses[idx]?.cause_choice"
-              @click="saveTrialAndNext(idx)"
-            >
-              Next
-            </button>
-          </div>
-        </Slide>
-      </Screen>
-
-      <PostTestScreen />
-
-      <InstructionScreen title="Thank you!">
         <div class="block">
-          <p>You have completed the study.</p>
+          <div v-if="trial.image" class="imageWrap">
+            <img :src="trial.image" class="stimImage" alt="Scenario illustration" />
+          </div>
+
+          <p class="readCarefully">
+            Please read the following story carefully.
+            <span class="taskLine">
+              Then select the event that seems like the best candidate for saying that it caused the outcome.
+            </span>
+          </p>
+
+          <!-- Events with radios (no repetition of event text elsewhere) -->
+          <label class="choice">
+            <input
+              type="radio"
+              :name="`cause-${idx}`"
+              value="A"
+              v-model="responses[idx].cause_choice"
+            />
+            <strong>Event A:</strong> {{ trial.event_A }}
+          </label>
+
+          <label class="choice">
+            <input
+              type="radio"
+              :name="`cause-${idx}`"
+              value="B"
+              v-model="responses[idx].cause_choice"
+            />
+            <strong>Event B:</strong> {{ trial.event_B }}
+          </label>
+
+          <label class="choice">
+            <input
+              type="radio"
+              :name="`cause-${idx}`"
+              value="C"
+              v-model="responses[idx].cause_choice"
+            />
+            <strong>Event C:</strong> {{ trial.event_C }}
+          </label>
+
+          <label class="choice">
+            <input
+              type="radio"
+              :name="`cause-${idx}`"
+              value="D"
+              v-model="responses[idx].cause_choice"
+            />
+            <strong>Event D:</strong> {{ trial.event_D }}
+          </label>
+
+          <p class="outcome">
+            <strong>Outcome:</strong> {{ trial.outcome_shown }}
+          </p>
+
+          <p class="hint">(If you are unsure, please choose the option that seems most important.)</p>
+
+          <!-- warning shown only when someone tries Next without answering -->
+          <p v-if="blockedIdx === idx" class="pleaseAnswer">
+            Please select an event before continuing.
+          </p>
         </div>
       </InstructionScreen>
 
-      <!-- Debug mode: shows downloadable results locally -->
-      <DebugResultsScreen />
+      <PostTestScreen />
+
+      <!-- show responses so participants can copy/paste -->
+      <InstructionScreen title="Finished — please copy your responses">
+        <div class="block">
+          <p>
+            <strong>Thank you!</strong> Please copy the text below and send it to Marichka.
+          </p>
+
+          <p class="hint">
+            Click inside the box, press <strong>Ctrl+A</strong> (or ⌘A), then <strong>Ctrl+C</strong> (or ⌘C).
+          </p>
+
+          <textarea class="copyBox" readonly :value="finalCsvText"></textarea>
+
+          <details style="margin-top: 12px;">
+            <summary style="cursor: pointer;">Show JSON version (optional)</summary>
+            <textarea class="copyBox" readonly :value="finalJsonText"></textarea>
+          </details>
+        </div>
+      </InstructionScreen>
     </template>
   </Experiment>
 </template>
@@ -142,8 +147,26 @@ export default {
       errorMessage: "",
       trials: [],
       responses: [],
-      pid: ""
+      // which trial is currently blocked (for the warning message)
+      blockedIdx: null,
+      // store handler ref so we can remove it if needed
+      _nextGateHandler: null,
+      // store unwatch fn for magpie sync
+      _unwatchMagpie: null,
+      // copyable outputs for the final screen
+      finalCsvText: "",
+      finalJsonText: ""
     };
+  },
+
+  watch: {
+    // Keep the final copy text up-to-date as participants answer
+    responses: {
+      deep: true,
+      handler() {
+        this.buildFinalCopyText();
+      }
+    }
   },
 
   methods: {
@@ -212,57 +235,122 @@ export default {
       return map[l] || "";
     },
 
-    // Save one row into Magpie and advance
-    saveTrialAndNext(idx) {
-      const trial = this.trials[idx];
-      const resp = this.responses[idx];
+    // determining which trial screen is currently visible by finding a visible radio input
+    getVisibleTrialIdx() {
+      const inputs = Array.from(
+        document.querySelectorAll('input[type="radio"][name^="cause-"]')
+      );
+      const visible = inputs.find(el => el.offsetParent !== null);
+      if (!visible) return null;
+      const m = String(visible.name).match(/^cause-(\d+)$/);
+      return m ? Number(m[1]) : null;
+    },
 
-      if (!resp?.cause_choice) return; // button should already be disabled
+    // installing a guard that blocks Next unless an option is selected
+    installNextGate() {
+      if (this._nextGateHandler) return;
 
-      // Ensure magpie exists
-      if (!this.$magpie || !this.$magpie.measurements || !this.$magpie.saveAndNextScreen) {
-        console.warn("Magpie API not available (this.$magpie.saveAndNextScreen missing).");
+      this._nextGateHandler = (e) => {
+        const t = e.target;
+        if (!t) return;
+
+        // Only react to clicks on the "Next" control
+        const label = (t.innerText || t.value || "").trim().toLowerCase();
+        if (label !== "next") return;
+
+        const idx = this.getVisibleTrialIdx();
+        if (idx === null) return; // not on a trial screen
+
+        const hasChoice = !!this.responses?.[idx]?.cause_choice;
+        if (hasChoice) return;
+
+        // Block navigation
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
+
+        // Show warning on the current trial
+        this.blockedIdx = idx;
+        window.setTimeout(() => {
+          if (this.blockedIdx === idx) this.blockedIdx = null;
+        }, 1200);
+      };
+
+      // capture phase to intercept before the framework handles it
+      document.addEventListener("click", this._nextGateHandler, true);
+    },
+
+    // sync local responses into Magpie's measurements (kept, but final screen is now the real "export")
+    installMagpieSync(pid) {
+      if (!this.$magpie || !this.$magpie.measurements) {
+        console.warn("Magpie instance not found on this.$magpie.");
         return;
       }
 
-      // Put all relevant fields into measurements for this screen/trial
-      this.$magpie.measurements.pid = this.pid;
-      this.$magpie.measurements.trial_index = idx;
+      this.$magpie.measurements.pid = pid;
+      this.$magpie.measurements.trials = this.trials;
+      this.$magpie.measurements.responses = this.responses;
 
-      this.$magpie.measurements.scenario_id = trial?.scenario_id || "";
-      this.$magpie.measurements.scenario_title = trial?.scenario_title || "";
-      this.$magpie.measurements.image = trial?.image || "";
+      if (this._unwatchMagpie) this._unwatchMagpie();
+      this._unwatchMagpie = this.$watch(
+        "responses",
+        (val) => {
+          this.$magpie.measurements.responses = val;
+        },
+        { deep: true }
+      );
+    },
 
-      this.$magpie.measurements.event_A = trial?.event_A || "";
-      this.$magpie.measurements.event_B = trial?.event_B || "";
-      this.$magpie.measurements.event_C = trial?.event_C || "";
-      this.$magpie.measurements.event_D = trial?.event_D || "";
+    // Build copyable CSV + JSON for the final screen
+    buildFinalCopyText() {
+      const pid =
+        (this.$magpie && this.$magpie.measurements && this.$magpie.measurements.pid) || "";
 
-      this.$magpie.measurements.outcome_shown = trial?.outcome_shown || "";
-      this.$magpie.measurements.valence = trial?.valence || "";
-      this.$magpie.measurements.distal_type = trial?.distal_type || "";
+      const rows = (this.trials || []).map((t, i) => {
+        const r = (this.responses || [])[i] || {};
+        return {
+          pid,
+          trial_index: i,
+          scenario_id: t?.scenario_id || "",
+          scenario_title: t?.scenario_title || "",
+          distal_type: t?.distal_type || "",
+          valence: t?.valence || "",
+          outcome_shown: t?.outcome_shown || "",
+          is_attention_check: this.isAttentionRow(t) ? 1 : 0,
+          attention_correct: r?.attention_correct || "",
+          cause_choice: r?.cause_choice || ""
+        };
+      });
 
-      this.$magpie.measurements.cause_choice = resp.cause_choice;
+      this.finalJsonText = JSON.stringify(rows, null, 2);
 
-      const isAC = this.isAttentionRow(trial) ? 1 : 0;
-      this.$magpie.measurements.is_attention_check = isAC;
-      this.$magpie.measurements.attention_correct = resp.attention_correct || "";
+      const headers = Object.keys(
+        rows[0] || {
+          pid: "",
+          trial_index: "",
+          scenario_id: "",
+          scenario_title: "",
+          distal_type: "",
+          valence: "",
+          outcome_shown: "",
+          is_attention_check: "",
+          attention_correct: "",
+          cause_choice: ""
+        }
+      );
 
-      // correctness flag for the attention check
-      // (only meaningful for the attention check row)
-      if (isAC) {
-        const correct = String(resp.attention_correct || "").trim().toUpperCase();
-        this.$magpie.measurements.attention_pass =
-          correct && resp.cause_choice ? (resp.cause_choice === correct ? 1 : 0) : "";
-      } else {
-        this.$magpie.measurements.attention_pass = "";
-      }
+      const escapeCsv = (v) => {
+        const s = String(v ?? "");
+        if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+        return s;
+      };
 
-      // Timestamp 
-      this.$magpie.measurements.client_timestamp_ms = Date.now();
+      const lines = [
+        headers.join(","),
+        ...rows.map((row) => headers.map((h) => escapeCsv(row[h])).join(","))
+      ];
 
-      // recording the row
-      this.$magpie.saveAndNextScreen();
+      this.finalCsvText = lines.join("\n");
     }
   },
 
@@ -273,15 +361,15 @@ export default {
       const csv = await res.text();
 
       const parsed = Papa.parse(csv, { header: true, skipEmptyLines: true });
-      const rows = (parsed.data || []).filter(r => r && r.scenario_id);
+      const rows = (parsed.data || []).filter((r) => r && r.scenario_id);
 
       if (!rows.length) throw new Error("No valid rows in CSV (missing scenario_id).");
 
       // identify attention check row
-      const attentionRow = rows.find(r => this.isAttentionRow(r)) || null;
+      const attentionRow = rows.find((r) => this.isAttentionRow(r)) || null;
 
       // real rows are everything except attention check
-      const realRows = rows.filter(r => !this.isAttentionRow(r));
+      const realRows = rows.filter((r) => !this.isAttentionRow(r));
 
       // normalize distal_type on real rows
       for (const r of realRows) r.distal_type = this.normDistal(r.distal_type);
@@ -289,7 +377,7 @@ export default {
       // --- Fixed set of 6 scenarios (labels) ---
       const profScenarioLabels = ["car", "memory", "theatre", "metro", "airport", "apartment"];
       const profScenarioIds = profScenarioLabels
-        .map(l => this.scenarioIdFromLabel(l))
+        .map((l) => this.scenarioIdFromLabel(l))
         .filter(Boolean);
 
       // group real rows by scenario_id
@@ -299,8 +387,8 @@ export default {
       }, {});
 
       // seed per participant
-      this.pid = this.getParticipantId();
-      const seed = this.seedFromPid(this.pid);
+      const pid = this.getParticipantId();
+      const seed = this.seedFromPid(pid);
 
       // --- three arrays (length 6), shuffle independently, use in order ---
       const scenarioArr = this.shuffle(profScenarioIds, seed ^ 0x111);
@@ -322,10 +410,9 @@ export default {
       const assigned = scenarioArr.map((sid, i) => {
         const candidates = byScenario[sid] || [];
 
-        // pick the row matching the assigned distal type; fall back to first row if missing
         const assignedDistal = distals[i];
         const chosen =
-          candidates.find(c => this.normDistal(c.distal_type) === assignedDistal) ||
+          candidates.find((c) => this.normDistal(c.distal_type) === assignedDistal) ||
           candidates[0] ||
           {};
 
@@ -351,27 +438,29 @@ export default {
           outcome_shown: attentionRow.outcome_positive || attentionRow.outcome_negative || ""
         });
       } else {
-        console.warn(
-          "No attention check row found (is_attention_check=1). Running without attention check."
-        );
+        console.warn("No attention check row found (is_attention_check=1). Running without attention check.");
       }
 
       this.trials = builtAll;
 
       // responses aligned with trials
-      this.responses = this.trials.map(t => ({
+      this.responses = this.trials.map((t) => ({
         scenario_id: t.scenario_id,
         is_attention_check: this.isAttentionRow(t),
         attention_correct: t.attention_correct || "",
         cause_choice: ""
       }));
 
-      // Store pid once at start (optional, but handy)
-      if (this.$magpie?.measurements) {
-        this.$magpie.measurements.pid = this.pid;
-      }
+      // install the "must answer before Next" gate
+      this.$nextTick(() => this.installNextGate());
 
-      console.log("TRIAL ORDER:", this.trials.map(t => t.scenario_id));
+      // optional magpie sync (doesn't hurt)
+      this.installMagpieSync(pid);
+
+      // build initial final copy text (will update via watcher)
+      this.buildFinalCopyText();
+
+      console.log("TRIAL ORDER:", this.trials.map((t) => t.scenario_id));
       console.log("PROF SCENARIOS USED:", profScenarioIds);
     } catch (err) {
       console.error(err);
@@ -379,6 +468,18 @@ export default {
     } finally {
       this.loading = false;
     }
+  },
+
+  beforeDestroy() {
+    // clean up watchers/listeners (Vue 2)
+    if (this._unwatchMagpie) this._unwatchMagpie();
+    if (this._nextGateHandler) document.removeEventListener("click", this._nextGateHandler, true);
+  },
+
+  unmounted() {
+    // clean up watchers/listeners (Vue 3 safe)
+    if (this._unwatchMagpie) this._unwatchMagpie();
+    if (this._nextGateHandler) document.removeEventListener("click", this._nextGateHandler, true);
   }
 };
 </script>
@@ -399,4 +500,18 @@ export default {
 .outcome { margin-top: 16px; }
 
 .hint { font-size: 0.95em; color: #555; }
+
+.pleaseAnswer { margin-top: 8px; color: #b00020; font-size: 0.95em; }
+
+/* Final screen copy box */
+.copyBox {
+  width: 100%;
+  min-height: 220px;
+  margin-top: 10px;
+  padding: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.35;
+}
 </style>
