@@ -56,7 +56,6 @@
             </span>
           </p>
 
-          <!-- Events with radios -->
           <label class="choice">
             <input
               type="radio"
@@ -107,7 +106,6 @@
 
           <p class="hint">(If you are unsure, please choose the option that seems most important.)</p>
 
-          <!-- warning shown only when someone tries Next without answering -->
           <p v-if="blockedIdx === idx" class="pleaseAnswer">
             Please select an event before continuing.
           </p>
@@ -122,7 +120,6 @@
         </div>
       </InstructionScreen>
 
-      <!-- IMPORTANT for server submission -->
       <SubmitResultsScreen />
     </template>
   </Experiment>
@@ -142,12 +139,12 @@ export default {
       responses: [],
       blockedIdx: null,
       _nextGateHandler: null,
-      _unwatchMagpie: null
+      _unwatchMagpie: null,
+      _pid: ""
     };
   },
 
   methods: {
-    // stable participant id so the same participant keeps the same randomization across reloads
     getParticipantId() {
       const key = "ba_thesis_pid";
       let pid = localStorage.getItem(key);
@@ -178,7 +175,6 @@ export default {
       return a;
     },
 
-    // Robust parsing: handles 1, "1", "is_attention_check = 1", true, etc.
     isAttentionRow(row) {
       const raw = row?.is_attention_check;
       if (raw === undefined || raw === null) return false;
@@ -191,8 +187,7 @@ export default {
     normDistal(s) {
       const t = String(s ?? "").trim().toLowerCase();
       if (!t) return "";
-      if (t === "non-deliberate" || t === "nondeliberate" || t === "non deliberate")
-        return "non_deliberate";
+      if (t === "non-deliberate" || t === "nondeliberate" || t === "non deliberate") return "non_deliberate";
       return t;
     },
 
@@ -211,16 +206,13 @@ export default {
     },
 
     getVisibleTrialIdx() {
-      const inputs = Array.from(
-        document.querySelectorAll('input[type="radio"][name^="cause-"]')
-      );
+      const inputs = Array.from(document.querySelectorAll('input[type="radio"][name^="cause-"]'));
       const visible = inputs.find(el => el.offsetParent !== null);
       if (!visible) return null;
       const m = String(visible.name).match(/^cause-(\d+)$/);
       return m ? Number(m[1]) : null;
     },
 
-    // installing a guard that blocks Next unless an option is selected
     installNextGate() {
       if (this._nextGateHandler) return;
 
@@ -228,22 +220,19 @@ export default {
         const t = e.target;
         if (!t) return;
 
-        // Most reliable: handle clicks on buttons/links inside magpie navigation
         const text = (t.innerText || t.value || "").trim().toLowerCase();
         if (text !== "next") return;
 
         const idx = this.getVisibleTrialIdx();
-        if (idx === null) return; // not on a trial screen
+        if (idx === null) return;
 
         const hasChoice = !!this.responses?.[idx]?.cause_choice;
         if (hasChoice) return;
 
-        // Block navigation
         e.preventDefault();
         e.stopPropagation();
         if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
 
-        // Show warning on the current trial
         this.blockedIdx = idx;
         window.setTimeout(() => {
           if (this.blockedIdx === idx) this.blockedIdx = null;
@@ -253,45 +242,40 @@ export default {
       document.addEventListener("click", this._nextGateHandler, true);
     },
 
-    installMagpieMeasurements(pid) {
-      if (!this.$magpie || !this.$magpie.measurements) {
-        console.warn("Magpie instance not found on this.$magpie. Submission may fail.");
+    buildTrialRows() {
+      const pid = this._pid || "";
+      return (this.trials || []).map((t, i) => {
+        const r = (this.responses || [])[i] || {};
+        return {
+          pid,
+          trial_index: i,
+          scenario_id: t?.scenario_id || "",
+          scenario_title: t?.scenario_title || "",
+          distal_type: t?.distal_type || "",
+          valence: t?.valence || "",
+          outcome_shown: t?.outcome_shown || "",
+          is_attention_check: this.isAttentionRow(t) ? 1 : 0,
+          attention_correct: r?.attention_correct || "",
+          cause_choice: r?.cause_choice || ""
+        };
+      });
+    },
+
+    installMagpieMeasurementsAsArray() {
+      if (!this.$magpie) {
+        console.warn("Magpie instance not found on this.$magpie.");
         return;
       }
 
-      // participant-level metadata
-      this.$magpie.measurements.pid = pid;
-      this.$magpie.measurements.experiment_version = "ba_thesis_v1";
-      this.$magpie.measurements.created_at = new Date().toISOString();
-
-      const buildRows = () => {
-        return (this.trials || []).map((t, i) => {
-          const r = (this.responses || [])[i] || {};
-          return {
-            pid,
-            trial_index: i,
-            scenario_id: t?.scenario_id || "",
-            scenario_title: t?.scenario_title || "",
-            distal_type: t?.distal_type || "",
-            valence: t?.valence || "",
-            outcome_shown: t?.outcome_shown || "",
-            is_attention_check: this.isAttentionRow(t) ? 1 : 0,
-            attention_correct: r?.attention_correct || "",
-            cause_choice: r?.cause_choice || ""
-          };
-        });
+      const write = () => {
+        const rows = this.buildTrialRows();
+        this.$magpie.measurements = rows; // <-- CRUCIAL: array goes here
       };
 
-      this.$magpie.measurements.trial_rows = buildRows();
+      write();
 
       if (this._unwatchMagpie) this._unwatchMagpie();
-      this._unwatchMagpie = this.$watch(
-        "responses",
-        () => {
-          this.$magpie.measurements.trial_rows = buildRows();
-        },
-        { deep: true }
-      );
+      this._unwatchMagpie = this.$watch("responses", write, { deep: true });
     }
   },
 
@@ -306,30 +290,23 @@ export default {
 
       if (!rows.length) throw new Error("No valid rows in CSV (missing scenario_id).");
 
-      // identify attention check row
       const attentionRow = rows.find(r => this.isAttentionRow(r)) || null;
-
-      // real rows are everything except attention check
       const realRows = rows.filter(r => !this.isAttentionRow(r));
 
-      // normalize distal_type on real rows
       for (const r of realRows) r.distal_type = this.normDistal(r.distal_type);
 
-      // --- Fixed set of 6 scenarios (labels) ---
       const profScenarioLabels = ["car", "memory", "theatre", "metro", "airport", "apartment"];
       const profScenarioIds = profScenarioLabels.map(l => this.scenarioIdFromLabel(l)).filter(Boolean);
 
-      // group real rows by scenario_id
       const byScenario = realRows.reduce((acc, r) => {
         (acc[r.scenario_id] ||= []).push(r);
         return acc;
       }, {});
 
-      // seed per participant
       const pid = this.getParticipantId();
+      this._pid = pid;
       const seed = this.seedFromPid(pid);
 
-      // --- three arrays (length 6), shuffle independently, use in order ---
       const scenarioArr = this.shuffle(profScenarioIds, seed ^ 0x111);
 
       const distalBase = ["natural", "non_deliberate", "deliberate", "natural", "non_deliberate", "deliberate"];
@@ -338,11 +315,10 @@ export default {
       const distals = this.shuffle(distalBase, seed ^ 0x222);
       const valences = this.shuffle(valenceBase, seed ^ 0x333);
 
-      // allocate scenario–distal–valence by index
       const assigned = scenarioArr.map((sid, i) => {
         const candidates = byScenario[sid] || [];
-
         const assignedDistal = distals[i];
+
         const chosen =
           candidates.find(c => this.normDistal(c.distal_type) === assignedDistal) || candidates[0] || {};
 
@@ -357,23 +333,18 @@ export default {
         };
       });
 
-      // trial order is also entirely random
       const builtReal = this.shuffle(assigned, seed ^ 0x444);
 
-      // attention check at fixed position #4 (index 3)
       const builtAll = builtReal.slice();
       if (attentionRow) {
         builtAll.splice(3, 0, {
           ...attentionRow,
           outcome_shown: attentionRow.outcome_positive || attentionRow.outcome_negative || ""
         });
-      } else {
-        console.warn("No attention check row found (is_attention_check=1). Running without attention check.");
       }
 
       this.trials = builtAll;
 
-      // responses aligned with trials
       this.responses = this.trials.map(t => ({
         scenario_id: t.scenario_id,
         is_attention_check: this.isAttentionRow(t),
@@ -382,9 +353,7 @@ export default {
       }));
 
       this.$nextTick(() => this.installNextGate());
-
-      // IMPORTANT: enable real submission by populating magpie measurements
-      this.installMagpieMeasurements(pid);
+      this.installMagpieMeasurementsAsArray();
     } catch (err) {
       console.error(err);
       this.errorMessage = err?.message || String(err);
