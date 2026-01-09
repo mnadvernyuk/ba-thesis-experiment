@@ -1,15 +1,10 @@
 export default {
-  experimentId: '9',
-  serverUrl: 'https://magpie-demo.herokuapp.com/',
-  socketUrl: 'wss://magpie-demo.herokuapp.com/socket',
-  completionUrl: 'https://...',
-  contactEmail: 'test@random.com',
-
-  mode: 'debug',
-  language: 'en',
-
-  stimuli: {
-    main: 'stimuli/vignettes.csv'
-  }
+  experimentId: "43",
+  serverUrl: "https://magpie-cogsciprag.fly.dev/",
+  socketUrl: "wss://magpie-cogsciprag.fly.dev/socket",
+  mode: "directLink",
+  language: "en",
+  contactEmail: "exprag@gmail.com",
+  stimuli: { main: "stimuli/vignettes.csv" }
 };
 
