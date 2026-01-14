@@ -1,11 +1,15 @@
 <template>
   <Experiment title="BA Thesis Experiment">
-    <InstructionScreen title="Welcome!">
+    <InstructionScreen title="Welcome!" :progress="0">
       <div class="block">
         <p>
           Thank you for taking part in the experiment.
           You will read a series of short stories describing chains of events.
           Each story ends in an outcome.
+        </p>
+
+        <p>
+          <strong>Please note:</strong> Each story is independent. Please judge each one separately.
         </p>
 
         <p>
@@ -19,11 +23,11 @@
       </div>
     </InstructionScreen>
 
-    <InstructionScreen v-if="loading" title="Loading…">
+    <InstructionScreen v-if="loading" title="Loading…" :progress="0">
       <div class="block">Preparing the experiment.</div>
     </InstructionScreen>
 
-    <InstructionScreen v-else-if="errorMessage" title="Error">
+    <InstructionScreen v-else-if="errorMessage" title="Error" :progress="0">
       <div class="block">
         <p><strong>Something went wrong:</strong></p>
         <p>{{ errorMessage }}</p>
@@ -39,6 +43,7 @@
         v-for="(trial, idx) in trials"
         :key="`trial-${idx}-${trial.scenario_id}`"
         :title="trial.scenario_title || 'Story'"
+        :progress="trialProgress(idx)"
       >
         <div class="block">
           <div v-if="trial.image" class="imageWrap">
@@ -48,8 +53,16 @@
           <p class="readCarefully">
             Please read the following story carefully.
             <span class="taskLine">
-              Then select the event that seems like the best candidate for saying that it caused the outcome.
+              Then select the event (from the chain of events) that seems like the best candidate for saying that it caused the outcome.
             </span>
+          </p>
+
+          <p class="outcomeTop">
+            <strong>Outcome (what happened in the end):</strong> {{ trial.outcome_shown }}
+          </p>
+
+          <p class="hint" style="margin-top: 10px;">
+            Which event best caused this outcome?
           </p>
 
           <label class="choice">
@@ -96,10 +109,6 @@
             <strong>Event D:</strong> {{ trial.event_D }}
           </label>
 
-          <p class="outcome">
-            <strong>Outcome:</strong> {{ trial.outcome_shown }}
-          </p>
-
           <p class="hint">(If you are unsure, please choose the option that seems most important.)</p>
 
           <p v-if="blockedIdx === idx" class="pleaseAnswer">
@@ -108,11 +117,10 @@
         </div>
       </InstructionScreen>
 
-      <!-- Custom post-test screen that DOES NOT create a new trial row -->
-      <Screen title="Final questions (optional)">
+      <Screen title="Final questions (optional)" :progress="postTestProgress">
         <div class="block">
           <p>
-            Answering the following questions is optional, but your answers will help us analyze our results.
+            Answering the following questions is optional, but your answers will help us analyze our results better.
           </p>
 
           <div class="formRow">
@@ -143,7 +151,11 @@
 
           <div class="formRow">
             <label>Native languages</label>
-            <input type="text" v-model="$magpie.measurements.languages" placeholder="e.g., German, Ukrainian" />
+            <input
+              type="text"
+              v-model="$magpie.measurements.languages"
+              placeholder="e.g., German, Ukrainian"
+            />
           </div>
 
           <div class="formRow">
@@ -151,12 +163,12 @@
             <textarea rows="3" v-model="$magpie.measurements.comments"></textarea>
           </div>
 
-          <!-- IMPORTANT: nextScreen() (not saveAndNextScreen) so it doesn't create a mismatched results row -->
-          <button @click="$magpie.nextScreen()">Next</button>
+          <!-- changed: writes optional data into expData so it appears in every CSV row -->
+          <button @click="finishPostTest()">Next</button>
         </div>
       </Screen>
 
-      <InstructionScreen title="Thank you!">
+      <InstructionScreen title="Thank you!" :progress="1">
         <div class="block">
           <p>You have completed the study.</p>
         </div>
@@ -182,11 +194,29 @@ export default {
       blockedIdx: null,
       _nextGateHandler: null,
       pid: "",
-      recorded: []
+      recorded: [],
+      prolific: {
+        PROLIFIC_PID: "",
+        STUDY_ID: "",
+        SESSION_ID: ""
+      }
     };
   },
 
+  computed: {
+    postTestProgress() {
+      const n = this.trials?.length || 0;
+      if (!n) return 0.95;
+      return n / (n + 1);
+    }
+  },
+
   methods: {
+    trialProgress(idx) {
+      const n = this.trials?.length || 1;
+      return idx / (n + 1);
+    },
+
     getParticipantId() {
       const key = "ba_thesis_pid";
       let pid = localStorage.getItem(key);
@@ -195,6 +225,14 @@ export default {
         localStorage.setItem(key, pid);
       }
       return pid;
+    },
+
+    getUrlParam(name) {
+      try {
+        return new URLSearchParams(window.location.search).get(name) || "";
+      } catch {
+        return "";
+      }
     },
 
     seedFromPid(pid) {
@@ -250,22 +288,61 @@ export default {
 
     getVisibleTrialIdx() {
       const inputs = Array.from(document.querySelectorAll('input[type="radio"][name^="cause-"]'));
-      const visible = inputs.find(el => el.offsetParent !== null);
+      const visible = inputs.find((el) => el.offsetParent !== null);
       if (!visible) return null;
       const m = String(visible.name).match(/^cause-(\d+)$/);
       return m ? Number(m[1]) : null;
     },
 
     ensureMagpieBasics() {
-      if (!this.$magpie || !this.$magpie.measurements) return;
-      this.$magpie.measurements.pid = this.pid;
-      this.$magpie.measurements.experiment_version = "ba_thesis_v1";
-      this.$magpie.measurements.created_at = new Date().toISOString();
+      if (!this.$magpie) return;
+
+      // keep a copy in measurements (fine)
+      if (this.$magpie.measurements) {
+        this.$magpie.measurements.pid = this.pid;
+        this.$magpie.measurements.experiment_version = "ba_thesis_v1";
+        this.$magpie.measurements.created_at = new Date().toISOString();
+        this.$magpie.measurements.PROLIFIC_PID = this.prolific.PROLIFIC_PID;
+        this.$magpie.measurements.STUDY_ID = this.prolific.STUDY_ID;
+        this.$magpie.measurements.SESSION_ID = this.prolific.SESSION_ID;
+      }
+
+      // IMPORTANT: expData gets merged into every trial row in the exported CSV
+      if (typeof this.$magpie.addExpData === "function") {
+        this.$magpie.addExpData({
+          pid: this.pid,
+          experiment_version: "ba_thesis_v1",
+          created_at: new Date().toISOString(),
+          PROLIFIC_PID: this.prolific.PROLIFIC_PID,
+          STUDY_ID: this.prolific.STUDY_ID,
+          SESSION_ID: this.prolific.SESSION_ID
+        });
+      }
+    },
+
+    finishPostTest() {
+      if (!this.$magpie) return;
+      const m = this.$magpie.measurements || {};
+
+      // add optional data globally so it appears in every CSV row
+      if (typeof this.$magpie.addExpData === "function") {
+        this.$magpie.addExpData({
+          age: m.age ?? "",
+          gender: m.gender ?? "",
+          education: m.education ?? "",
+          languages: m.languages ?? "",
+          comments: m.comments ?? ""
+        });
+      }
+
+      this.$magpie.nextScreen();
     },
 
     trialRow(idx) {
       const t = this.trials[idx] || {};
       const r = this.responses[idx] || {};
+
+      // trial-specific only; demographics get added via addExpData()
       return {
         pid: this.pid,
         trial_index: idx,
@@ -291,7 +368,7 @@ export default {
         if (text !== "next") return;
 
         const idx = this.getVisibleTrialIdx();
-        if (idx === null) return; // not on a vignette trial
+        if (idx === null) return;
 
         const hasChoice = !!this.responses?.[idx]?.cause_choice;
         if (!hasChoice) {
@@ -305,7 +382,6 @@ export default {
           return;
         }
 
-        // Record exactly one row per trial (server requires array of objects with same keys)
         if (this.$magpie && typeof this.$magpie.addTrialData === "function") {
           if (!this.recorded[idx]) {
             this.$magpie.addTrialData(this.trialRow(idx));
@@ -322,21 +398,25 @@ export default {
     try {
       this.pid = this.getParticipantId();
 
+      this.prolific.PROLIFIC_PID = this.getUrlParam("PROLIFIC_PID");
+      this.prolific.STUDY_ID = this.getUrlParam("STUDY_ID");
+      this.prolific.SESSION_ID = this.getUrlParam("SESSION_ID");
+
       const res = await fetch("stimuli/vignettes.csv");
       if (!res.ok) throw new Error(`CSV load failed: ${res.status}`);
       const csv = await res.text();
 
       const parsed = Papa.parse(csv, { header: true, skipEmptyLines: true });
-      const rows = (parsed.data || []).filter(r => r && r.scenario_id);
+      const rows = (parsed.data || []).filter((r) => r && r.scenario_id);
 
       if (!rows.length) throw new Error("No valid rows in CSV (missing scenario_id).");
 
-      const attentionRow = rows.find(r => this.isAttentionRow(r)) || null;
-      const realRows = rows.filter(r => !this.isAttentionRow(r));
+      const attentionRow = rows.find((r) => this.isAttentionRow(r)) || null;
+      const realRows = rows.filter((r) => !this.isAttentionRow(r));
       for (const r of realRows) r.distal_type = this.normDistal(r.distal_type);
 
       const profScenarioLabels = ["car", "memory", "theatre", "metro", "airport", "apartment"];
-      const profScenarioIds = profScenarioLabels.map(l => this.scenarioIdFromLabel(l)).filter(Boolean);
+      const profScenarioIds = profScenarioLabels.map((l) => this.scenarioIdFromLabel(l)).filter(Boolean);
 
       const byScenario = realRows.reduce((acc, r) => {
         (acc[r.scenario_id] ||= []).push(r);
@@ -355,7 +435,7 @@ export default {
         const candidates = byScenario[sid] || [];
         const assignedDistal = distals[i];
         const chosen =
-          candidates.find(c => this.normDistal(c.distal_type) === assignedDistal) || candidates[0] || {};
+          candidates.find((c) => this.normDistal(c.distal_type) === assignedDistal) || candidates[0] || {};
         const val = valences[i];
         const outcomeShown = val === "positive" ? chosen.outcome_positive : chosen.outcome_negative;
 
@@ -379,7 +459,7 @@ export default {
 
       this.trials = builtAll;
 
-      this.responses = this.trials.map(t => ({
+      this.responses = this.trials.map((t) => ({
         scenario_id: t.scenario_id,
         is_attention_check: this.isAttentionRow(t),
         attention_correct: t.attention_correct || "",
@@ -427,7 +507,7 @@ export default {
 
 .choice { display: block; margin: 10px 0; }
 
-.outcome { margin-top: 16px; }
+.outcomeTop { margin-top: 14px; }
 
 .hint { font-size: 0.95em; color: #555; }
 
