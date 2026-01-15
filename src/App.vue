@@ -53,16 +53,12 @@
           <p class="readCarefully">
             Please read the following story carefully.
             <span class="taskLine">
-              Then select the event (from the chain of events) that seems like the best candidate for saying that it caused the outcome.
+              Then make your choice.
             </span>
           </p>
 
-          <p class="outcomeTop">
-            <strong>Outcome (what happened in the end):</strong> {{ trial.outcome_shown }}
-          </p>
-
           <p class="hint" style="margin-top: 10px;">
-            Which event best caused this outcome?
+            Which event from the following sequence of events (presented in order of occurrence) that led to the outcome would you identify as <em>the cause</em> of the outcome?
           </p>
 
           <label class="choice">
@@ -108,6 +104,10 @@
             />
             <strong>Event D:</strong> {{ trial.event_D }}
           </label>
+
+          <p class="outcomeBottom">
+            <strong>Outcome:</strong> {{ trial.outcome_shown }}
+          </p>
 
           <p class="hint">(If you are unsure, please choose the option that seems most important.)</p>
 
@@ -163,7 +163,6 @@
             <textarea rows="3" v-model="$magpie.measurements.comments"></textarea>
           </div>
 
-          <!-- changed: writes optional data into expData so it appears in every CSV row -->
           <button @click="finishPostTest()">Next</button>
         </div>
       </Screen>
@@ -287,7 +286,9 @@ export default {
     },
 
     getVisibleTrialIdx() {
-      const inputs = Array.from(document.querySelectorAll('input[type="radio"][name^="cause-"]'));
+      const inputs = Array.from(
+        document.querySelectorAll('input[type="radio"][name^="cause-"]')
+      );
       const visible = inputs.find((el) => el.offsetParent !== null);
       if (!visible) return null;
       const m = String(visible.name).match(/^cause-(\d+)$/);
@@ -297,7 +298,6 @@ export default {
     ensureMagpieBasics() {
       if (!this.$magpie) return;
 
-      // keep a copy in measurements (fine)
       if (this.$magpie.measurements) {
         this.$magpie.measurements.pid = this.pid;
         this.$magpie.measurements.experiment_version = "ba_thesis_v1";
@@ -307,7 +307,6 @@ export default {
         this.$magpie.measurements.SESSION_ID = this.prolific.SESSION_ID;
       }
 
-      // IMPORTANT: expData gets merged into every trial row in the exported CSV
       if (typeof this.$magpie.addExpData === "function") {
         this.$magpie.addExpData({
           pid: this.pid,
@@ -324,7 +323,6 @@ export default {
       if (!this.$magpie) return;
       const m = this.$magpie.measurements || {};
 
-      // add optional data globally so it appears in every CSV row
       if (typeof this.$magpie.addExpData === "function") {
         this.$magpie.addExpData({
           age: m.age ?? "",
@@ -342,7 +340,6 @@ export default {
       const t = this.trials[idx] || {};
       const r = this.responses[idx] || {};
 
-      // trial-specific only; demographics get added via addExpData()
       return {
         pid: this.pid,
         trial_index: idx,
@@ -416,7 +413,9 @@ export default {
       for (const r of realRows) r.distal_type = this.normDistal(r.distal_type);
 
       const profScenarioLabels = ["car", "memory", "theatre", "metro", "airport", "apartment"];
-      const profScenarioIds = profScenarioLabels.map((l) => this.scenarioIdFromLabel(l)).filter(Boolean);
+      const profScenarioIds = profScenarioLabels
+        .map((l) => this.scenarioIdFromLabel(l))
+        .filter(Boolean);
 
       const byScenario = realRows.reduce((acc, r) => {
         (acc[r.scenario_id] ||= []).push(r);
@@ -426,7 +425,14 @@ export default {
       const seed = this.seedFromPid(this.pid);
 
       const scenarioArr = this.shuffle(profScenarioIds, seed ^ 0x111);
-      const distalBase = ["natural", "non_deliberate", "deliberate", "natural", "non_deliberate", "deliberate"];
+      const distalBase = [
+        "natural",
+        "non_deliberate",
+        "deliberate",
+        "natural",
+        "non_deliberate",
+        "deliberate"
+      ];
       const valenceBase = ["positive", "negative", "positive", "negative", "positive", "negative"];
       const distals = this.shuffle(distalBase, seed ^ 0x222);
       const valences = this.shuffle(valenceBase, seed ^ 0x333);
@@ -435,7 +441,9 @@ export default {
         const candidates = byScenario[sid] || [];
         const assignedDistal = distals[i];
         const chosen =
-          candidates.find((c) => this.normDistal(c.distal_type) === assignedDistal) || candidates[0] || {};
+          candidates.find((c) => this.normDistal(c.distal_type) === assignedDistal) ||
+          candidates[0] ||
+          {};
         const val = valences[i];
         const outcomeShown = val === "positive" ? chosen.outcome_positive : chosen.outcome_negative;
 
@@ -497,23 +505,61 @@ export default {
   text-align: left;
 }
 
-.imageWrap { text-align: center; margin-bottom: 16px; }
+.imageWrap {
+  text-align: center;
+  margin-bottom: 16px;
+}
 
-.stimImage { max-width: 520px; width: 100%; border-radius: 10px; }
+.stimImage {
+  max-width: 520px;
+  width: 100%;
+  border-radius: 10px;
+}
 
-.readCarefully { color: #777; margin-bottom: 12px; line-height: 1.35; }
+.readCarefully {
+  color: #777;
+  margin-bottom: 12px;
+  line-height: 1.35;
+}
 
-.taskLine { display: block; margin-top: 6px; color: #666; }
+.taskLine {
+  display: block;
+  margin-top: 6px;
+  color: #666;
+}
 
-.choice { display: block; margin: 10px 0; }
+.choice {
+  display: block;
+  margin: 10px 0;
+}
 
-.outcomeTop { margin-top: 14px; }
+.outcomeBottom {
+  margin-top: 14px;
+}
 
-.hint { font-size: 0.95em; color: #555; }
+.hint {
+  font-size: 0.95em;
+  color: #555;
+}
 
-.pleaseAnswer { margin-top: 8px; color: #b00020; font-size: 0.95em; }
+.pleaseAnswer {
+  margin-top: 8px;
+  color: #b00020;
+  font-size: 0.95em;
+}
 
-.formRow { margin: 10px 0; }
-.formRow label { display: block; font-weight: 600; margin-bottom: 4px; }
-.formRow input, .formRow select, .formRow textarea { width: 100%; max-width: 520px; }
+.formRow {
+  margin: 10px 0;
+}
+.formRow label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.formRow input,
+.formRow select,
+.formRow textarea {
+  width: 100%;
+  max-width: 520px;
+}
 </style>
