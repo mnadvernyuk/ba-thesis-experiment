@@ -4,7 +4,7 @@ export default {
   socketUrl: 'wss://magpie-cogsciprag.fly.dev/socket',
   completionUrl: 'https://...',
   contactEmail: 'exprag@gmail.com',
-  mode: 'directLink',
+  mode: 'prolific',
   language: 'en',
   stimuli: {
     main: 'stimuli/vignettes.csv'
