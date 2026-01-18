@@ -1,5 +1,5 @@
 export default {
-    experimentId: '43’,
+    experimentId: '43',
     serverUrl: 'https://magpie-cogsciprag.fly.dev',
     socketUrl: 'wss://magpie-cogsciprag.fly.dev/socket',
     // prolific mode_
