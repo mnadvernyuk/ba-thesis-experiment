@@ -41,15 +41,6 @@ Data collection was conducted via **Prolific**, with an additional pilot sample 
 
 ## 📊 Repository Structure
 
-.
-├── data/                     # Raw and cleaned CSV files (pilot + Prolific)
-├── analysis/                 # R scripts used for data analysis
-├── src/                      # Experiment source code (Vue + magpie)
-├── public/images             # Images used in the experiment
-├── thesis/                   # Thesis text and related files
-├── README.md                 # This file
-└── package.json / dependencies
-
 ## 🧮 Data Analysis
 
 Data were analyzed in **R** using descriptive statistics and inferential tests inspired by prior work on causal chain selection.
