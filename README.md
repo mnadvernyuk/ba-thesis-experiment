@@ -7,8 +7,6 @@ This repository contains all materials, data, and analysis scripts for my bachel
 completed at the **University of Tübingen** under the supervision of  
 **Prof. Dr. Michael Franke**.
 
----
-
 ## 📄 Overview
 
 This thesis investigates how people select causes from unfolding causal chains, focusing on two central factors in causal cognition:
@@ -21,8 +19,6 @@ This thesis investigates how people select causes from unfolding causal chains, 
 Building on earlier work on causal selection in event chains (e.g., Hilton & McClure, 2009), the study examines whether people are more likely to identify **intentional or agentive events** as “the cause,” even when these events are **not temporally closest** to the outcome.
 
 The experiment uses short vignette-based causal chains in which participants select the event they consider the best candidate for causing the outcome.
-
----
 
 ## 🧪 Experiment
 
@@ -43,8 +39,6 @@ Data collection was conducted via **Prolific**, with an additional pilot sample 
 🔗 **Live experiment:**  
 👉 https://mnadvernyuk.github.io/ba-thesis-experiment/
 
----
-
 ## 📊 Repository Structure
 
 .
@@ -55,9 +49,6 @@ Data collection was conducted via **Prolific**, with an additional pilot sample 
 ├── thesis/                   # Thesis text and related files
 ├── README.md                 # This file
 └── package.json / dependencies
-
-
----
 
 ## 🧮 Data Analysis
 
@@ -73,8 +64,6 @@ Analyses compare distal selection rates across:
 
 All analysis scripts are located in the `analysis/` directory.
 
----
-
 ## 📌 Main Findings (Summary)
 
 - Participants showed a consistent **descriptive tendency** to select the distal event more often when it was **deliberate** than when it was natural or non-deliberate.
@@ -82,15 +71,11 @@ All analysis scripts are located in the `analysis/` directory.
 - **Outcome valence framing** produced only small descriptive differences and no strong inferential effects.
 - Overall, the results suggest that **agency and intentionality** play a central role in causal attribution within unfolding causal chains.
 
----
-
 ## 📄 Thesis
 
 A PDF of the completed thesis will be uploaded here soon:
 
 **“Causal Attribution in Causal Chains”**
-
----
 
 ## 💬 Contact
 
