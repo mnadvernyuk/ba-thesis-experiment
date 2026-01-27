@@ -1,4 +1,4 @@
-# experiment
+# BA Thesis Experiment
 
 This is a sample experiment using magpie.
 ### Setup
