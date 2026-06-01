@@ -64,7 +64,7 @@ All analysis scripts are located in the `analysis/` directory.
 
 ## 📄 Thesis
 
-A PDF of the completed thesis will be uploaded here soon:
+A PDF of the completed thesis:
 
 **“Causal Attribution in Causal Chains”**
 
